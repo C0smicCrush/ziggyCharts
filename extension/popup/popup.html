@@ -1,0 +1,98 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>ZiggyCharts Settings</title>
+  <link rel="stylesheet" href="popup.css">
+</head>
+<body>
+  <div class="popup-container">
+    <div class="header">
+      <svg class="logo" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+        <path d="M3 3v18h18" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+        <path d="M18 9l-5 5-4-4-3 3" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+      </svg>
+      <h1>ZiggyCharts</h1>
+    </div>
+
+    <div class="description">
+      Replaces Google's AI Overview with interactive data charts powered by Data Commons.
+    </div>
+
+    <div class="settings-section">
+      <h2>Settings</h2>
+      
+      <div class="setting-item">
+        <label class="toggle-container">
+          <input type="checkbox" id="enabled" checked>
+          <span class="toggle-slider"></span>
+          <span class="toggle-label">Enable ZiggyCharts</span>
+        </label>
+      </div>
+
+      <div class="setting-item">
+        <label class="toggle-container">
+          <input type="checkbox" id="autoReplace" checked>
+          <span class="toggle-slider"></span>
+          <span class="toggle-label">Auto-replace AI Overview</span>
+        </label>
+      </div>
+
+      <div class="setting-item">
+        <label class="toggle-container">
+          <input type="checkbox" id="showFallback" checked>
+          <span class="toggle-slider"></span>
+          <span class="toggle-label">Show charts for all queries</span>
+        </label>
+        <p class="setting-hint">When enabled, creates charts even if no AI Overview is found</p>
+      </div>
+    </div>
+
+    <div class="stats-section">
+      <h2>Statistics</h2>
+      <div class="stat-grid">
+        <div class="stat-item">
+          <div class="stat-value" id="chartsCreated">0</div>
+          <div class="stat-label">Charts Created</div>
+        </div>
+        <div class="stat-item">
+          <div class="stat-value" id="aiOverviewsReplaced">0</div>
+          <div class="stat-label">AI Overviews Replaced</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="supported-queries">
+      <h2>Supported Query Types</h2>
+      <div class="query-tags">
+        <span class="tag">Population</span>
+        <span class="tag">Fertility Rate</span>
+        <span class="tag">GDP</span>
+        <span class="tag">Unemployment</span>
+        <span class="tag">Life Expectancy</span>
+        <span class="tag">Income</span>
+        <span class="tag">Temperature</span>
+        <span class="tag">Emissions</span>
+      </div>
+      <p class="hint">Try searching: "fertility rate USA" or "GDP United States"</p>
+    </div>
+
+    <div class="footer">
+      <a href="https://datacommons.org" target="_blank" class="link">
+        <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+          <path d="M18 13v6a2 2 0 01-2 2H5a2 2 0 01-2-2V8a2 2 0 012-2h6M15 3h6v6M10 14L21 3" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+        </svg>
+        Data Commons
+      </a>
+      <a href="https://github.com/yourusername/ziggycharts" target="_blank" class="link">
+        <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+          <path d="M9 19c-5 1.5-5-2.5-7-3m14 6v-3.87a3.37 3.37 0 00-.94-2.61c3.14-.35 6.44-1.54 6.44-7A5.44 5.44 0 0020 4.77 5.07 5.07 0 0019.91 1S18.73.65 16 2.48a13.38 13.38 0 00-7 0C6.27.65 5.09 1 5.09 1A5.07 5.07 0 005 4.77a5.44 5.44 0 00-1.5 3.78c0 5.42 3.3 6.61 6.44 7A3.37 3.37 0 009 18.13V22" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+        </svg>
+        GitHub
+      </a>
+    </div>
+  </div>
+  <script src="popup.js"></script>
+</body>
+</html>
