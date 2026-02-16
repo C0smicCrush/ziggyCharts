@@ -38,7 +38,8 @@ class DataCommonsAPI {
         ...data,
         title: `${variable.name} - ${place.name}`,
         metric: variable.name,
-        location: place.name
+        location: place.name,
+        _variableDCID: variable.dcid
       };
 
     } catch (error) {
@@ -81,7 +82,7 @@ class DataCommonsAPI {
     }
   }
 
-  // Parse DC's response to extract the place and the first LINE chart variable.
+  // Parse DC's response to extract the place and best LINE chart variable.
   parseDetection(result) {
     const placeInfo = result.place;
     if (!placeInfo || !placeInfo.dcid) {
@@ -95,46 +96,57 @@ class DataCommonsAPI {
       return null;
     }
 
-    // Find the first LINE tile — that's the most relevant time-series chart DC recommends
-    let statVarKey = null;
+    // Collect ALL LINE tile statVarKeys across all categories
+    const allLineVarKeys = [];
     for (const category of categories) {
       for (const block of (category.blocks || [])) {
         for (const col of (block.columns || [])) {
           for (const tile of (col.tiles || [])) {
             if (tile.type === 'LINE' && tile.statVarKey?.length > 0) {
-              statVarKey = tile.statVarKey[0];
-              break;
+              for (const key of tile.statVarKey) {
+                allLineVarKeys.push({ key, category });
+              }
             }
           }
-          if (statVarKey) break;
         }
-        if (statVarKey) break;
       }
-      if (statVarKey) break;
     }
 
-    if (!statVarKey) {
-      console.log('ZiggyCharts: No LINE chart tile found in DC response');
+    if (allLineVarKeys.length === 0) {
+      console.log('ZiggyCharts: No LINE chart tiles found in DC response');
       return null;
     }
 
-    // Look up the stat var DCID and name from the category's statVarSpec
-    let varDcid = null;
-    let varName = null;
-
-    for (const category of categories) {
-      const spec = category.statVarSpec?.[statVarKey];
+    // Resolve all keys to their actual stat var specs
+    const resolved = [];
+    for (const { key, category } of allLineVarKeys) {
+      const spec = category.statVarSpec?.[key];
       if (spec && spec.statVar) {
-        varDcid = spec.statVar;
-        varName = spec.name || null;
-        break;
+        resolved.push({
+          dcid: spec.statVar,
+          name: spec.name || null
+        });
       }
     }
 
-    if (!varDcid) {
-      console.log('ZiggyCharts: Could not resolve statVarKey:', statVarKey);
+    if (resolved.length === 0) {
+      console.log('ZiggyCharts: Could not resolve any statVarKeys');
       return null;
     }
+
+    console.log('ZiggyCharts: Found', resolved.length, 'LINE variables:',
+      resolved.map(v => v.dcid));
+
+    // Pick the best one: prefer direct measurements over derived ratios/indices.
+    // "AsAFractionOf" in a DCID means it's a ratio/index, not an absolute value.
+    // If a non-ratio version exists, prefer it.
+    let best = resolved[0];
+    const nonRatio = resolved.filter(v => !v.dcid.includes('AsAFractionOf'));
+    if (nonRatio.length > 0) {
+      best = nonRatio[0];
+    }
+
+    console.log('ZiggyCharts: Selected variable:', best.dcid);
 
     return {
       place: {
@@ -142,8 +154,8 @@ class DataCommonsAPI {
         name: placeInfo.name || placeInfo.dcid.split('/').pop()
       },
       variable: {
-        dcid: varDcid,
-        name: varName || this.cleanVariableName(varDcid)
+        dcid: best.dcid,
+        name: best.name || this.cleanVariableName(best.dcid)
       }
     };
   }
@@ -195,15 +207,15 @@ class DataCommonsAPI {
         datasets: [{
           label: this.cleanVariableName(variableDCID),
           data: sorted.map(o => parseFloat(o.value)),
-          borderColor: '#4285f4',
-          backgroundColor: 'rgba(66, 133, 244, 0.08)',
-          borderWidth: 2.5,
+          borderColor: '#669df6',
+          backgroundColor: 'rgba(102, 157, 246, 0.1)',
+          borderWidth: 3,
           pointRadius: 0,
           pointHoverRadius: 5,
-          pointHoverBackgroundColor: '#4285f4',
-          pointHoverBorderColor: '#fff',
+          pointHoverBackgroundColor: '#669df6',
+          pointHoverBorderColor: '#292a2d',
           pointHoverBorderWidth: 2,
-          tension: 0.1,
+          tension: 0.35,
           fill: true
         }]
       };
@@ -237,11 +249,11 @@ class DataCommonsAPI {
       datasets: [{
         label: 'Demo Data',
         data: years.map((_, i) => 100 + i * 2 + (Math.random() - 0.5) * 10),
-        borderColor: '#4285f4',
-        backgroundColor: 'rgba(66, 133, 244, 0.08)',
-        borderWidth: 2.5,
+        borderColor: '#669df6',
+        backgroundColor: 'rgba(102, 157, 246, 0.1)',
+        borderWidth: 3,
         pointRadius: 0,
-        tension: 0.1,
+        tension: 0.35,
         fill: true
       }]
     };

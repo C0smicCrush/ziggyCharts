@@ -55,7 +55,7 @@
   border-radius: 0;
   padding: 8px 0;
   margin-bottom: 8px;
-  min-height: 250px;
+  min-height: 180px;
 }
 
 #ziggycharts-canvas {
@@ -122,25 +122,33 @@
 /* Dark mode */
 @media (prefers-color-scheme: dark) {
   .ziggycharts-container {
-    background: #202124;
+    background: #292a2d;
     border-color: #3c4043;
-    color: #e8eaed;
+    color: #bdc1c6;
   }
 
   .ziggycharts-title h2 {
-    color: #e8eaed;
+    color: #bdc1c6;
+  }
+
+  .ziggycharts-icon {
+    color: #8ab4f8;
   }
 
   .ziggycharts-badge {
-    color: #9aa0a6;
+    color: #80868b;
   }
 
   .ziggycharts-chart-wrapper {
-    background: #202124;
+    background: #292a2d;
   }
 
   .ziggycharts-info {
-    color: #9aa0a6;
+    color: #80868b;
+  }
+
+  .ziggycharts-info svg {
+    color: #80868b;
   }
 
   .ziggycharts-info a {
@@ -157,8 +165,100 @@
   }
 
   .ziggycharts-download:hover {
-    background: #303134;
+    background: #35363a;
   }
+
+  .ziggycharts-compare-input {
+    background: #35363a;
+    border-color: #5f6368;
+    color: #e8eaed;
+  }
+
+  .ziggycharts-compare-input:focus {
+    border-color: #669df6;
+    background: #35363a;
+  }
+
+  .ziggycharts-compare-input::placeholder {
+    color: #80868b;
+  }
+
+  .ziggycharts-compare-btn {
+    background: #35363a;
+    border-color: #5f6368;
+    color: #8ab4f8;
+  }
+
+  .ziggycharts-compare-btn:hover {
+    background: #3c4043;
+  }
+
+  .ziggycharts-compare-status {
+    color: #80868b;
+  }
+}
+
+/* Comparison bar */
+.ziggycharts-compare-bar {
+  display: flex;
+  gap: 8px;
+  padding: 8px 0;
+}
+
+.ziggycharts-compare-input {
+  flex: 1;
+  padding: 7px 12px;
+  border: 1px solid #dadce0;
+  border-radius: 20px;
+  font-size: 13px;
+  font-family: Google Sans, Roboto, arial, sans-serif;
+  color: #202124;
+  background: #f8f9fa;
+  outline: none;
+  transition: border-color 0.15s, box-shadow 0.15s;
+}
+
+.ziggycharts-compare-input:focus {
+  border-color: #669df6;
+  box-shadow: 0 0 0 2px rgba(102, 157, 246, 0.2);
+  background: #f8f9fa;
+}
+
+.ziggycharts-compare-input::placeholder {
+  color: #9aa0a6;
+}
+
+.ziggycharts-compare-btn {
+  padding: 7px 16px;
+  border: 1px solid #dadce0;
+  border-radius: 20px;
+  font-size: 13px;
+  font-family: Google Sans, Roboto, arial, sans-serif;
+  font-weight: 500;
+  color: #1a73e8;
+  background: white;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background 0.15s;
+}
+
+.ziggycharts-compare-btn:hover {
+  background: #f0f4ff;
+}
+
+.ziggycharts-compare-status {
+  font-size: 12px;
+  color: #70757a;
+  padding: 0 4px;
+  min-height: 18px;
+}
+
+.ziggycharts-compare-ok {
+  color: #34a853;
+}
+
+.ziggycharts-compare-error {
+  color: #d93025;
 }
 
 /* Responsive */

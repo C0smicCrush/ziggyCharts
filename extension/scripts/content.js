@@ -4,16 +4,22 @@ class ZiggyCharts {
     this.dataCommons = new DataCommonsAPI();
     this.initialized = false;
     this.observer = null;
-    this.chartCreated = false; // Prevent infinite loops
-    this.processedElements = new Set(); // Track already processed elements
+    this.chartCreated = false;
+    this.processedElements = new Set();
+    // Comparison state
+    this.chartInstance = null;
+    this.currentVariableDCID = null;
+    this.currentChartData = null;
+    this.comparisonColors = [
+      '#669df6', '#34a853', '#ea8600', '#d93025',
+      '#a142f4', '#24c1e0', '#f538a0', '#5f6368'
+    ];
+    this.datasetCount = 0;
   }
 
-  // Initialize the extension
   async init() {
     if (this.initialized) return;
 
-    // Only run on the main "All" search results page.
-    // Bail out on Images, Videos, News, Shopping, Books, etc.
     const params = new URLSearchParams(window.location.search);
     if (params.has('tbm') || params.has('udm')) {
       return;
@@ -22,7 +28,6 @@ class ZiggyCharts {
     console.log('ZiggyCharts: Initializing...');
     this.initialized = true;
 
-    // Get search query
     const query = this.getSearchQuery();
     if (!query) {
       console.log('ZiggyCharts: No search query found');
@@ -30,24 +35,16 @@ class ZiggyCharts {
     }
 
     console.log('ZiggyCharts: Query detected:', query);
-
-    // Wait for page to load
     await this.waitForPageLoad();
-
-    // Find and replace AI Overview
     this.findAndReplaceAIOverview(query);
-
-    // Set up mutation observer to catch dynamically loaded AI overviews
     this.setupObserver(query);
   }
 
-  // Get the search query from URL
   getSearchQuery() {
     const params = new URLSearchParams(window.location.search);
     return params.get('q') || '';
   }
 
-  // Wait for page to be ready
   waitForPageLoad() {
     return new Promise((resolve) => {
       if (document.readyState === 'complete') {
@@ -58,27 +55,19 @@ class ZiggyCharts {
     });
   }
 
-  // Find AI Overview elements and replace them
   async findAndReplaceAIOverview(query) {
-    // Skip if we already created a chart
-    if (this.chartCreated) {
-      return;
-    }
+    if (this.chartCreated) return;
 
     let aiOverviewContainer = null;
     
-    // Strategy 1: Look for the specific AI Overview container structure
-    // Based on the HTML: <div class="EyBRub jUja0e" jscontroller="EYwa3d">
     const specificContainers = document.querySelectorAll('.EyBRub.jUja0e, div[jscontroller="EYwa3d"], div[data-mcpr][data-subtree="mfc"]');
     for (const container of specificContainers) {
       if (container.textContent.includes('AI Overview')) {
         aiOverviewContainer = container;
-        console.log('ZiggyCharts: Found AI Overview via specific selector');
         break;
       }
     }
     
-    // Strategy 2: If not found, look for divs containing "AI Overview" text
     if (!aiOverviewContainer) {
       const allDivs = document.querySelectorAll('div[data-hveid], div[jsname], c-wiz, div[jscontroller]');
       for (const element of allDivs) {
@@ -86,76 +75,34 @@ class ZiggyCharts {
         if ((text.includes('AI Overview') || text.includes('AI-generated')) && 
             element.querySelector('.heWuVc, .nk9vdc')) {
           aiOverviewContainer = element;
-          console.log('ZiggyCharts: Found AI Overview via text search');
           break;
         }
       }
     }
 
-    // If no AI Overview found, create chart at top anyway for relevant queries
     if (!aiOverviewContainer) {
-      console.log('ZiggyCharts: No AI Overview found, checking if query is chart-worthy');
       const chartData = await this.dataCommons.getChartData(query);
-      
       if (chartData && chartData.datasets.length > 0) {
-        console.log('ZiggyCharts: Creating chart for relevant query');
         this.createChartAtTop(query, chartData);
-      } else {
-        console.log('ZiggyCharts: Query not relevant for charts');
       }
       return;
     }
 
-    // Replace AI Overview with chart
-    console.log('ZiggyCharts: Replacing AI Overview with chart');
     await this.replaceWithChart(aiOverviewContainer, query);
   }
 
-  // Check if element looks like an AI Overview
-  looksLikeAIOverview(element, text) {
-    // Check for AI Overview indicators
-    const indicators = [
-      'ai overview',
-      'generative ai',
-      'ai-generated',
-      'experimental',
-      'learn more about',
-      'sources across the web'
-    ];
-
-    const hasIndicator = indicators.some(indicator => text.includes(indicator));
-    
-    // Also check if element is large and prominent (typical for AI Overview)
-    const rect = element.getBoundingClientRect();
-    const isProminent = rect.height > 100 && rect.width > 300;
-
-    return hasIndicator && isProminent;
-  }
-
-  // Replace element with chart
   async replaceWithChart(element, query) {
     try {
-      // Check if already processed
-      if (this.processedElements.has(element)) {
-        console.log('ZiggyCharts: Element already processed, skipping');
-        return;
-      }
-      
-      // Mark as processed
+      if (this.processedElements.has(element)) return;
       this.processedElements.add(element);
       
-      // Disconnect observer to prevent infinite loop
       if (this.observer) {
         this.observer.disconnect();
-        console.log('ZiggyCharts: Disconnected observer to prevent loops');
       }
 
-      // Fetch chart data
       let chartData = await this.dataCommons.getChartData(query);
 
-      // If no data, force fallback with title
       if (!chartData || !chartData.datasets || chartData.datasets.length === 0) {
-        console.log('ZiggyCharts: No chart data, using fallback');
         chartData = {
           ...this.dataCommons.getFallbackData(),
           title: 'Data Visualization (Demo Mode)',
@@ -164,41 +111,34 @@ class ZiggyCharts {
         };
       }
 
-      // Create chart container
       const chartContainer = this.createChartContainer(query, chartData);
-
-      // Insert chart BEFORE the AI Overview, then remove AI Overview
-      // This ensures proper positioning and pushes other content down
       element.parentNode.insertBefore(chartContainer, element);
-      
-      // Remove the AI Overview element
       element.style.display = 'none';
       element.remove();
       
       this.chartCreated = true;
-      console.log('ZiggyCharts: Successfully replaced AI Overview with chart');
     } catch (error) {
       console.error('ZiggyCharts: Error creating chart:', error);
     }
   }
 
-  // Create chart at top of results
   createChartAtTop(query, chartData) {
     const searchContainer = document.querySelector('#search') || 
                            document.querySelector('#center_col') ||
                            document.querySelector('#rso');
-
-    if (!searchContainer) {
-      console.log('ZiggyCharts: Could not find search container');
-      return;
-    }
+    if (!searchContainer) return;
 
     const chartContainer = this.createChartContainer(query, chartData);
     searchContainer.insertBefore(chartContainer, searchContainer.firstChild);
+    this.chartCreated = true;
   }
 
-  // Create the chart container HTML
   createChartContainer(query, chartData) {
+    // Store the variable DCID for comparison compatibility checks
+    this.currentVariableDCID = chartData._variableDCID || null;
+    this.currentChartData = chartData;
+    this.datasetCount = 1;
+
     const container = document.createElement('div');
     container.className = 'ziggycharts-container';
     container.innerHTML = `
@@ -215,6 +155,11 @@ class ZiggyCharts {
       <div class="ziggycharts-chart-wrapper">
         <canvas id="ziggycharts-canvas"></canvas>
       </div>
+      <div class="ziggycharts-compare-bar">
+        <input type="text" class="ziggycharts-compare-input" placeholder="Compare: e.g. france gdp, brazil gdp..." />
+        <button class="ziggycharts-compare-btn">+ Compare</button>
+      </div>
+      <div class="ziggycharts-compare-status"></div>
       <div class="ziggycharts-footer">
         <div class="ziggycharts-info">
           <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
@@ -233,7 +178,28 @@ class ZiggyCharts {
       </div>
     `;
 
-    // Render chart after a brief delay to ensure DOM is ready
+    // Wire up comparison bar
+    const input = container.querySelector('.ziggycharts-compare-input');
+    const btn = container.querySelector('.ziggycharts-compare-btn');
+    const status = container.querySelector('.ziggycharts-compare-status');
+
+    const doCompare = () => {
+      const val = input.value.trim();
+      if (val) {
+        this.addComparison(val, status);
+        input.value = '';
+      }
+    };
+
+    btn.addEventListener('click', doCompare);
+    input.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        doCompare();
+      }
+    });
+
+    // Render chart
     setTimeout(() => {
       this.renderChart(container.querySelector('#ziggycharts-canvas'), chartData);
     }, 100);
@@ -241,25 +207,116 @@ class ZiggyCharts {
     return container;
   }
 
-  // Render the chart using Chart.js
-  renderChart(canvas, chartData) {
-    if (!canvas) {
-      console.error('ZiggyCharts: Canvas element not found');
+  // Add a comparison dataset to the existing chart
+  async addComparison(query, statusEl) {
+    if (!this.chartInstance) {
+      statusEl.textContent = 'No chart to compare against.';
       return;
     }
 
+    statusEl.textContent = 'Loading...';
+    statusEl.className = 'ziggycharts-compare-status';
+
+    try {
+      // Resolve the comparison query through Data Commons
+      const newData = await this.dataCommons.getChartData(query);
+
+      if (!newData || !newData.datasets || newData.datasets.length === 0) {
+        statusEl.textContent = 'No data found for "' + query + '".';
+        statusEl.className = 'ziggycharts-compare-status ziggycharts-compare-error';
+        return;
+      }
+
+      // Check compatibility: same variable DCID means same unit/metric
+      const newVarDCID = newData._variableDCID;
+      if (this.currentVariableDCID && newVarDCID && this.currentVariableDCID !== newVarDCID) {
+        statusEl.textContent = 'Different metric ("' + (newData.metric || query) + '" vs existing chart). Only same metrics can be compared.';
+        statusEl.className = 'ziggycharts-compare-status ziggycharts-compare-error';
+        return;
+      }
+
+      // Pick the next color
+      const colorIdx = this.datasetCount % this.comparisonColors.length;
+      const color = this.comparisonColors[colorIdx];
+      this.datasetCount++;
+
+      // Build the new dataset
+      const newDataset = {
+        label: newData.location || query,
+        data: newData.datasets[0].data,
+        borderColor: color,
+        backgroundColor: color.replace(')', ', 0.05)').replace('rgb', 'rgba'),
+        borderWidth: 3,
+        pointRadius: 0,
+        pointHoverRadius: 5,
+        pointHoverBackgroundColor: color,
+        pointHoverBorderColor: '#292a2d',
+        pointHoverBorderWidth: 2,
+        tension: 0.35,
+        fill: false
+      };
+
+      // Align labels: use the union of dates
+      const existingLabels = this.chartInstance.data.labels;
+      const newLabels = newData.labels;
+      const allLabels = [...new Set([...existingLabels, ...newLabels])].sort();
+
+      // Re-index all existing datasets to the merged label set
+      for (const ds of this.chartInstance.data.datasets) {
+        const oldData = {};
+        existingLabels.forEach((lbl, i) => { oldData[lbl] = ds.data[i]; });
+        ds.data = allLabels.map(lbl => oldData[lbl] ?? null);
+      }
+
+      // Index the new dataset to the merged label set
+      const newDataMap = {};
+      newLabels.forEach((lbl, i) => { newDataMap[lbl] = newData.datasets[0].data[i]; });
+      newDataset.data = allLabels.map(lbl => newDataMap[lbl] ?? null);
+
+      // Update chart
+      this.chartInstance.data.labels = allLabels;
+      this.chartInstance.data.datasets.push(newDataset);
+      this.chartInstance.options.plugins.legend.display = true;
+      this.chartInstance.options.spanGaps = true;
+      this.chartInstance.update();
+
+      // Update title
+      const titleEl = document.querySelector('.ziggycharts-title h2');
+      if (titleEl) {
+        const places = this.chartInstance.data.datasets.map(ds => ds.label);
+        const metricName = newData.metric || this.currentChartData?.metric || '';
+        titleEl.textContent = metricName + ' — ' + places.join(' vs ');
+      }
+
+      statusEl.textContent = '✓ Added ' + (newData.location || query);
+      statusEl.className = 'ziggycharts-compare-status ziggycharts-compare-ok';
+
+    } catch (error) {
+      console.error('ZiggyCharts: Comparison error:', error);
+      statusEl.textContent = 'Error loading comparison data.';
+      statusEl.className = 'ziggycharts-compare-status ziggycharts-compare-error';
+    }
+  }
+
+  renderChart(canvas, chartData) {
+    if (!canvas) return;
+
     const ctx = canvas.getContext('2d');
     
-    window.ziggyChart = new Chart(ctx, {
+    this.chartInstance = new Chart(ctx, {
       type: 'line',
       data: {
         labels: chartData.labels,
-        datasets: chartData.datasets
+        datasets: chartData.datasets.map((ds, i) => ({
+          ...ds,
+          label: chartData.location || ds.label
+        }))
       },
       options: {
         responsive: true,
         maintainAspectRatio: true,
-        aspectRatio: 2.5,
+        aspectRatio: 3.5,
+        spanGaps: true,
         interaction: {
           mode: 'index',
           intersect: false,
@@ -267,43 +324,35 @@ class ZiggyCharts {
         plugins: {
           legend: {
             display: false,
+            position: 'top',
+            labels: {
+              color: '#9aa0a6',
+              font: { size: 12, family: 'Google Sans, Roboto, sans-serif' },
+              usePointStyle: true,
+              pointStyle: 'line',
+              padding: 16
+            }
           },
-          title: {
-            display: false
-          },
+          title: { display: false },
           tooltip: {
             backgroundColor: '#202124',
             titleColor: '#fff',
             bodyColor: '#e8eaed',
-            borderColor: '#5f6368',
             borderWidth: 0,
             padding: 10,
             cornerRadius: 8,
-            titleFont: {
-              size: 13,
-              weight: '500',
-              family: 'Google Sans, Roboto, sans-serif'
-            },
-            bodyFont: {
-              size: 12,
-              family: 'Google Sans, Roboto, sans-serif'
-            },
+            titleFont: { size: 13, weight: '500', family: 'Google Sans, Roboto, sans-serif' },
+            bodyFont: { size: 12, family: 'Google Sans, Roboto, sans-serif' },
             callbacks: {
               label: function(context) {
                 let label = context.dataset.label || '';
-                if (label) {
-                  label += ': ';
-                }
+                if (label) label += ': ';
                 const val = context.parsed.y;
-                if (Math.abs(val) >= 1e12) {
-                  label += (val / 1e12).toFixed(2) + ' trillion';
-                } else if (Math.abs(val) >= 1e9) {
-                  label += (val / 1e9).toFixed(2) + ' billion';
-                } else if (Math.abs(val) >= 1e6) {
-                  label += (val / 1e6).toFixed(2) + ' million';
-                } else {
-                  label += val.toLocaleString();
-                }
+                if (val === null || val === undefined) return null;
+                if (Math.abs(val) >= 1e12) label += (val / 1e12).toFixed(2) + ' trillion';
+                else if (Math.abs(val) >= 1e9) label += (val / 1e9).toFixed(2) + ' billion';
+                else if (Math.abs(val) >= 1e6) label += (val / 1e6).toFixed(2) + ' million';
+                else label += val.toLocaleString();
                 return label;
               }
             }
@@ -311,28 +360,28 @@ class ZiggyCharts {
         },
         scales: {
           x: {
-            grid: {
-              display: false
-            },
+            grid: { display: false },
+            border: { display: false },
             ticks: {
-              color: '#70757a',
+              color: '#9aa0a6',
               font: { size: 11, family: 'Roboto, sans-serif' },
-              maxTicksLimit: 10
+              maxTicksLimit: 8,
+              padding: 4
             }
           },
           y: {
             beginAtZero: false,
-            grid: {
-              color: '#f1f3f4',
-              drawBorder: false
-            },
+            grid: { color: 'rgba(154, 160, 166, 0.1)', drawBorder: false, lineWidth: 0.5 },
+            border: { display: false },
             ticks: {
-              color: '#70757a',
+              color: '#9aa0a6',
               font: { size: 11, family: 'Roboto, sans-serif' },
+              padding: 8,
+              maxTicksLimit: 6,
               callback: function(value) {
-                if (Math.abs(value) >= 1e12) return (value / 1e12).toFixed(0) + 'T';
-                if (Math.abs(value) >= 1e9) return (value / 1e9).toFixed(0) + 'B';
-                if (Math.abs(value) >= 1e6) return (value / 1e6).toFixed(0) + 'M';
+                if (Math.abs(value) >= 1e12) return (value / 1e12).toFixed(1) + 'T';
+                if (Math.abs(value) >= 1e9) return (value / 1e9).toFixed(1) + 'B';
+                if (Math.abs(value) >= 1e6) return (value / 1e6).toFixed(1) + 'M';
                 if (Math.abs(value) >= 1e3) return (value / 1e3).toFixed(0) + 'K';
                 return value.toLocaleString();
               }
@@ -342,21 +391,22 @@ class ZiggyCharts {
       }
     });
 
-    // Setup download functionality
+    // Also store the chart reference globally for the download button
+    window.ziggyChart = this.chartInstance;
     window.ziggyChartsDownload = () => {
-      this.downloadChartData(chartData);
+      this.downloadChartData();
     };
   }
 
-  // Download chart data as CSV
-  downloadChartData(chartData) {
-    let csv = 'Date,' + chartData.datasets.map(d => d.label).join(',') + '\n';
-    
-    chartData.labels.forEach((label, i) => {
-      const row = [label];
-      chartData.datasets.forEach(dataset => {
-        row.push(dataset.data[i] || '');
-      });
+  downloadChartData() {
+    if (!this.chartInstance) return;
+    const chart = this.chartInstance;
+    const labels = chart.data.labels;
+    const datasets = chart.data.datasets;
+
+    let csv = 'Date,' + datasets.map(d => d.label).join(',') + '\n';
+    labels.forEach((label, i) => {
+      const row = [label, ...datasets.map(d => d.data[i] ?? '')];
       csv += row.join(',') + '\n';
     });
 
@@ -364,66 +414,45 @@ class ZiggyCharts {
     const url = window.URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = `${chartData.title || 'data'}.csv`;
+    a.download = 'ziggycharts_data.csv';
     a.click();
     window.URL.revokeObjectURL(url);
   }
 
-  // Set up mutation observer to catch dynamic content
   setupObserver(query) {
-    // Don't set up observer if we already created a chart
-    if (this.chartCreated) {
-      console.log('ZiggyCharts: Chart already created, skipping observer setup');
-      return;
-    }
+    if (this.chartCreated) return;
 
     const targetNode = document.querySelector('#search') || 
                        document.querySelector('#center_col') || 
                        document.body;
 
-    const config = {
-      childList: true,
-      subtree: true
-    };
-
     let debounceTimer = null;
 
     this.observer = new MutationObserver((mutations) => {
-      // Skip if chart already created
-      if (this.chartCreated) {
-        return;
-      }
-
-      // Debounce - only check once every 1 second
+      if (this.chartCreated) return;
       clearTimeout(debounceTimer);
       debounceTimer = setTimeout(() => {
         for (const mutation of mutations) {
           if (mutation.addedNodes.length > 0) {
-            // Check if any added node is our chart (skip if so)
             const hasZiggyChart = Array.from(mutation.addedNodes).some(node => 
               node.classList && node.classList.contains('ziggycharts-container')
             );
-            
-            if (!hasZiggyChart) {
-              this.findAndReplaceAIOverview(query);
-            }
+            if (!hasZiggyChart) this.findAndReplaceAIOverview(query);
             break;
           }
         }
       }, 1000);
     });
 
-    this.observer.observe(targetNode, config);
+    this.observer.observe(targetNode, { childList: true, subtree: true });
   }
 }
 
-// Check if we're on the main "All" results tab
 function isMainSearchPage() {
   const params = new URLSearchParams(window.location.search);
   return !params.has('tbm') && !params.has('udm');
 }
 
-// Show/hide chart based on current tab
 function updateChartVisibility() {
   const chart = document.querySelector('.ziggycharts-container');
   if (chart) {
@@ -431,7 +460,6 @@ function updateChartVisibility() {
   }
 }
 
-// Initialize when DOM is ready
 const ziggyInstance = new ZiggyCharts();
 
 if (document.readyState === 'loading') {
@@ -440,7 +468,6 @@ if (document.readyState === 'loading') {
   ziggyInstance.init();
 }
 
-// Listen for SPA navigation (Google uses History API for tab switches)
 const origPushState = history.pushState;
 history.pushState = function() {
   origPushState.apply(this, arguments);
