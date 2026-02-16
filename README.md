@@ -1,3 +1,5 @@
+I grew up with the statistical charts google created, and I miss having them on search. AI summarizations just don't do it for me, so I made this to have my graphs back :)
+
 # ZiggyCharts
 
 A Chrome extension that replaces Google's AI Overview with interactive, data-driven charts powered by [Data Commons](https://datacommons.org).
