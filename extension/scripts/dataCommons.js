@@ -1,12 +1,158 @@
 // Data Commons API Integration
 // Query goes to Data Commons raw. We only filter the response data.
+// Includes in-memory + persistent caching and parallel fetch support.
 class DataCommonsAPI {
   constructor() {
     this.apiBase = 'https://api.datacommons.org';
     this.detectAndFulfillURL = 'https://datacommons.org/api/explore/detect-and-fulfill';
     this.observationEndpoint = `${this.apiBase}/v2/observation`;
     this.apiKey = 'AIzaSyCTI4Xz-UW_G2Q2RfknhcfdAnTHq5X5XuI';
+
+    // In-memory caches (keyed by normalized string, values include TTL)
+    this._detectionCache = new Map();
+    this._observationCache = new Map();
+
+    // Default TTL: 30 minutes for detections, 60 minutes for observations
+    this.DETECTION_TTL_MS = 30 * 60 * 1000;
+    this.OBSERVATION_TTL_MS = 60 * 60 * 1000;
+
+    // Inflight dedup maps — prevents duplicate concurrent requests for the same key
+    this._detectionInflight = new Map();
+    this._observationInflight = new Map();
+
+    // Warm the in-memory cache from chrome.storage.local on construction
+    this._warmCacheFromStorage();
   }
+
+  // ── Cache helpers ─────────────────────────────────────────────────────
+
+  _normalizeQuery(query) {
+    return query.trim().toLowerCase().replace(/\s+/g, ' ');
+  }
+
+  _observationKey(placeDCID, variableDCID) {
+    return `${placeDCID}::${variableDCID}`;
+  }
+
+  _isExpired(entry) {
+    return Date.now() > entry.expiresAt;
+  }
+
+  // Warm in-memory caches from chrome.storage.local so data survives page navigations
+  _warmCacheFromStorage() {
+    try {
+      chrome.storage.local.get(['ziggy_detectionCache', 'ziggy_observationCache'], (result) => {
+        if (chrome.runtime.lastError) return;
+
+        const det = result.ziggy_detectionCache;
+        if (det && typeof det === 'object') {
+          for (const [key, entry] of Object.entries(det)) {
+            if (!this._isExpired(entry)) {
+              this._detectionCache.set(key, entry);
+            }
+          }
+        }
+
+        const obs = result.ziggy_observationCache;
+        if (obs && typeof obs === 'object') {
+          for (const [key, entry] of Object.entries(obs)) {
+            if (!this._isExpired(entry)) {
+              this._observationCache.set(key, entry);
+            }
+          }
+        }
+
+        console.log('ZiggyCharts: Cache warmed —',
+          this._detectionCache.size, 'detections,',
+          this._observationCache.size, 'observations');
+      });
+    } catch (e) {
+      // storage may be unavailable in some contexts; ignore
+    }
+  }
+
+  // Persist a cache map to chrome.storage.local (debounced via caller)
+  _persistCache(storageKey, memoryMap) {
+    try {
+      const obj = {};
+      for (const [key, entry] of memoryMap) {
+        if (!this._isExpired(entry)) {
+          obj[key] = entry;
+        }
+      }
+      chrome.storage.local.set({ [storageKey]: obj });
+    } catch (e) {
+      // ignore storage errors
+    }
+  }
+
+  _getCachedDetection(query) {
+    const key = this._normalizeQuery(query);
+    const entry = this._detectionCache.get(key);
+    if (entry && !this._isExpired(entry)) {
+      console.log('ZiggyCharts: Detection cache HIT for', key);
+      return entry.value;
+    }
+    if (entry) this._detectionCache.delete(key); // expired
+    return null;
+  }
+
+  _setCachedDetection(query, value) {
+    const key = this._normalizeQuery(query);
+    const entry = { value, expiresAt: Date.now() + this.DETECTION_TTL_MS };
+    this._detectionCache.set(key, entry);
+    this._persistCache('ziggy_detectionCache', this._detectionCache);
+  }
+
+  _getCachedObservation(placeDCID, variableDCID) {
+    const key = this._observationKey(placeDCID, variableDCID);
+    const entry = this._observationCache.get(key);
+    if (entry && !this._isExpired(entry)) {
+      console.log('ZiggyCharts: Observation cache HIT for', key);
+      return entry.value;
+    }
+    if (entry) this._observationCache.delete(key); // expired
+    return null;
+  }
+
+  _setCachedObservation(placeDCID, variableDCID, value) {
+    const key = this._observationKey(placeDCID, variableDCID);
+    const entry = { value, expiresAt: Date.now() + this.OBSERVATION_TTL_MS };
+    this._observationCache.set(key, entry);
+    this._persistCache('ziggy_observationCache', this._observationCache);
+  }
+
+  // ── Inflight deduplication ────────────────────────────────────────────
+  // If a request for the same key is already in flight, reuse its promise
+  // instead of firing a duplicate network call.
+
+  async _deduplicatedDetection(query) {
+    const key = this._normalizeQuery(query);
+    if (this._detectionInflight.has(key)) {
+      console.log('ZiggyCharts: Deduplicating inflight detection for', key);
+      return this._detectionInflight.get(key);
+    }
+    const promise = this._rawDetectFromQuery(query).finally(() => {
+      this._detectionInflight.delete(key);
+    });
+    this._detectionInflight.set(key, promise);
+    return promise;
+  }
+
+  async _deduplicatedObservation(placeDCID, variableDCID) {
+    const key = this._observationKey(placeDCID, variableDCID);
+    if (this._observationInflight.has(key)) {
+      console.log('ZiggyCharts: Deduplicating inflight observation for', key);
+      return this._observationInflight.get(key);
+    }
+    const promise = this._rawFetchObservations(placeDCID, variableDCID).finally(() => {
+      this._observationInflight.delete(key);
+    });
+    this._observationInflight.set(key, promise);
+    return promise;
+  }
+
+  // ── Public API ────────────────────────────────────────────────────────
 
   async getChartData(query) {
     try {
@@ -48,9 +194,21 @@ class DataCommonsAPI {
     }
   }
 
-  // Send the raw query to Data Commons NL API — no preprocessing whatsoever.
-  // DC website passes the query as a URL param `q` and context in the POST body.
+  // Fetch chart data for multiple queries in parallel.
+  // Returns an array of results (null entries for failed queries).
+  async getMultipleChartData(queries) {
+    return Promise.all(queries.map(q => this.getChartData(q)));
+  }
+
+  // Send the raw query to Data Commons NL API — with caching layer.
   async detectFromQuery(query) {
+    const cached = this._getCachedDetection(query);
+    if (cached !== null) return cached;
+    return this._deduplicatedDetection(query);
+  }
+
+  // Actual network call for detection (called only on cache miss).
+  async _rawDetectFromQuery(query) {
     try {
       const url = `${this.detectAndFulfillURL}?q=${encodeURIComponent(query)}`;
 
@@ -74,7 +232,10 @@ class DataCommonsAPI {
       console.log('ZiggyCharts: DC response — place:', result.place?.name,
                    '| categories:', result.config?.categories?.length || 0);
 
-      return this.parseDetection(result);
+      const detection = this.parseDetection(result);
+      // Cache the result (even null, to avoid re-fetching known misses)
+      this._setCachedDetection(query, detection);
+      return detection;
 
     } catch (error) {
       console.error('ZiggyCharts: DC detect error:', error);
@@ -160,8 +321,15 @@ class DataCommonsAPI {
     };
   }
 
-  // Fetch observations from Data Commons
+  // Fetch observations from Data Commons — with caching layer.
   async fetchObservations(placeDCID, variableDCID) {
+    const cached = this._getCachedObservation(placeDCID, variableDCID);
+    if (cached !== null) return cached;
+    return this._deduplicatedObservation(placeDCID, variableDCID);
+  }
+
+  // Actual network call for observations (called only on cache miss).
+  async _rawFetchObservations(placeDCID, variableDCID) {
     try {
       const response = await chrome.runtime.sendMessage({
         type: 'FETCH_DATA_COMMONS',
@@ -180,7 +348,11 @@ class DataCommonsAPI {
       });
 
       if (!response.success || !response.data) return null;
-      return this.parseObservationData(response.data, variableDCID, placeDCID);
+
+      const parsed = this.parseObservationData(response.data, variableDCID, placeDCID);
+      // Cache the parsed result
+      this._setCachedObservation(placeDCID, variableDCID, parsed);
+      return parsed;
 
     } catch (error) {
       console.error('ZiggyCharts: Observation error:', error);
