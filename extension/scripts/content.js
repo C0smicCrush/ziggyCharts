@@ -156,7 +156,7 @@ class ZiggyCharts {
         <canvas id="ziggycharts-canvas"></canvas>
       </div>
       <div class="ziggycharts-compare-bar">
-        <input type="text" class="ziggycharts-compare-input" placeholder="Compare: e.g. france gdp, brazil gdp..." />
+        <input type="text" class="ziggycharts-compare-input" placeholder="Compare: e.g. france gdp, brazil gdp, japan gdp (comma-separated)" />
         <button class="ziggycharts-compare-btn">+ Compare</button>
       </div>
       <div class="ziggycharts-compare-status"></div>
@@ -207,89 +207,114 @@ class ZiggyCharts {
     return container;
   }
 
-  // Add a comparison dataset to the existing chart
-  async addComparison(query, statusEl) {
+  // Add one or more comparison datasets to the existing chart.
+  // Accepts a comma-separated string — all queries are resolved in parallel.
+  async addComparison(input, statusEl) {
     if (!this.chartInstance) {
       statusEl.textContent = 'No chart to compare against.';
       return;
     }
 
-    statusEl.textContent = 'Loading...';
+    // Split on commas to support batch comparisons (e.g. "france gdp, brazil gdp")
+    const queries = input.split(',').map(q => q.trim()).filter(Boolean);
+    if (queries.length === 0) return;
+
+    statusEl.textContent = 'Loading ' + queries.length + ' comparison' + (queries.length > 1 ? 's' : '') + '...';
     statusEl.className = 'ziggycharts-compare-status';
 
     try {
-      // Resolve the comparison query through Data Commons
-      const newData = await this.dataCommons.getChartData(query);
+      // Fetch all comparison datasets in parallel
+      const results = await this.dataCommons.getMultipleChartData(queries);
 
-      if (!newData || !newData.datasets || newData.datasets.length === 0) {
-        statusEl.textContent = 'No data found for "' + query + '".';
-        statusEl.className = 'ziggycharts-compare-status ziggycharts-compare-error';
-        return;
+      const added = [];
+      const failed = [];
+      const incompatible = [];
+
+      for (let i = 0; i < results.length; i++) {
+        const newData = results[i];
+        const query = queries[i];
+
+        if (!newData || !newData.datasets || newData.datasets.length === 0) {
+          failed.push(query);
+          continue;
+        }
+
+        // Check compatibility: same variable DCID means same unit/metric
+        const newVarDCID = newData._variableDCID;
+        if (this.currentVariableDCID && newVarDCID && this.currentVariableDCID !== newVarDCID) {
+          incompatible.push(newData.metric || query);
+          continue;
+        }
+
+        // Pick the next color
+        const colorIdx = this.datasetCount % this.comparisonColors.length;
+        const color = this.comparisonColors[colorIdx];
+        this.datasetCount++;
+
+        // Build the new dataset
+        const newDataset = {
+          label: newData.location || query,
+          data: newData.datasets[0].data,
+          borderColor: color,
+          backgroundColor: color.replace(')', ', 0.05)').replace('rgb', 'rgba'),
+          borderWidth: 3,
+          pointRadius: 0,
+          pointHoverRadius: 5,
+          pointHoverBackgroundColor: color,
+          pointHoverBorderColor: '#292a2d',
+          pointHoverBorderWidth: 2,
+          tension: 0.35,
+          fill: false
+        };
+
+        // Align labels: use the union of dates
+        const existingLabels = this.chartInstance.data.labels;
+        const newLabels = newData.labels;
+        const allLabels = [...new Set([...existingLabels, ...newLabels])].sort();
+
+        // Re-index all existing datasets to the merged label set
+        for (const ds of this.chartInstance.data.datasets) {
+          const oldData = {};
+          existingLabels.forEach((lbl, idx) => { oldData[lbl] = ds.data[idx]; });
+          ds.data = allLabels.map(lbl => oldData[lbl] ?? null);
+        }
+
+        // Index the new dataset to the merged label set
+        const newDataMap = {};
+        newLabels.forEach((lbl, idx) => { newDataMap[lbl] = newData.datasets[0].data[idx]; });
+        newDataset.data = allLabels.map(lbl => newDataMap[lbl] ?? null);
+
+        // Update chart
+        this.chartInstance.data.labels = allLabels;
+        this.chartInstance.data.datasets.push(newDataset);
+
+        added.push(newData.location || query);
       }
 
-      // Check compatibility: same variable DCID means same unit/metric
-      const newVarDCID = newData._variableDCID;
-      if (this.currentVariableDCID && newVarDCID && this.currentVariableDCID !== newVarDCID) {
-        statusEl.textContent = 'Different metric ("' + (newData.metric || query) + '" vs existing chart). Only same metrics can be compared.';
-        statusEl.className = 'ziggycharts-compare-status ziggycharts-compare-error';
-        return;
+      // Apply chart updates once after all datasets are added
+      if (added.length > 0) {
+        this.chartInstance.options.plugins.legend.display = true;
+        this.chartInstance.options.spanGaps = true;
+        this.chartInstance.update();
+
+        // Update title
+        const titleEl = document.querySelector('.ziggycharts-title h2');
+        if (titleEl) {
+          const places = this.chartInstance.data.datasets.map(ds => ds.label);
+          const metricName = this.currentChartData?.metric || '';
+          titleEl.textContent = metricName + ' — ' + places.join(' vs ');
+        }
       }
 
-      // Pick the next color
-      const colorIdx = this.datasetCount % this.comparisonColors.length;
-      const color = this.comparisonColors[colorIdx];
-      this.datasetCount++;
+      // Build status message
+      const parts = [];
+      if (added.length > 0) parts.push('Added ' + added.join(', '));
+      if (failed.length > 0) parts.push('No data: ' + failed.join(', '));
+      if (incompatible.length > 0) parts.push('Incompatible metric: ' + incompatible.join(', '));
 
-      // Build the new dataset
-      const newDataset = {
-        label: newData.location || query,
-        data: newData.datasets[0].data,
-        borderColor: color,
-        backgroundColor: color.replace(')', ', 0.05)').replace('rgb', 'rgba'),
-        borderWidth: 3,
-        pointRadius: 0,
-        pointHoverRadius: 5,
-        pointHoverBackgroundColor: color,
-        pointHoverBorderColor: '#292a2d',
-        pointHoverBorderWidth: 2,
-        tension: 0.35,
-        fill: false
-      };
-
-      // Align labels: use the union of dates
-      const existingLabels = this.chartInstance.data.labels;
-      const newLabels = newData.labels;
-      const allLabels = [...new Set([...existingLabels, ...newLabels])].sort();
-
-      // Re-index all existing datasets to the merged label set
-      for (const ds of this.chartInstance.data.datasets) {
-        const oldData = {};
-        existingLabels.forEach((lbl, i) => { oldData[lbl] = ds.data[i]; });
-        ds.data = allLabels.map(lbl => oldData[lbl] ?? null);
-      }
-
-      // Index the new dataset to the merged label set
-      const newDataMap = {};
-      newLabels.forEach((lbl, i) => { newDataMap[lbl] = newData.datasets[0].data[i]; });
-      newDataset.data = allLabels.map(lbl => newDataMap[lbl] ?? null);
-
-      // Update chart
-      this.chartInstance.data.labels = allLabels;
-      this.chartInstance.data.datasets.push(newDataset);
-      this.chartInstance.options.plugins.legend.display = true;
-      this.chartInstance.options.spanGaps = true;
-      this.chartInstance.update();
-
-      // Update title
-      const titleEl = document.querySelector('.ziggycharts-title h2');
-      if (titleEl) {
-        const places = this.chartInstance.data.datasets.map(ds => ds.label);
-        const metricName = newData.metric || this.currentChartData?.metric || '';
-        titleEl.textContent = metricName + ' — ' + places.join(' vs ');
-      }
-
-      statusEl.textContent = '✓ Added ' + (newData.location || query);
-      statusEl.className = 'ziggycharts-compare-status ziggycharts-compare-ok';
+      statusEl.textContent = parts.join(' | ');
+      statusEl.className = 'ziggycharts-compare-status ' +
+        (added.length > 0 ? 'ziggycharts-compare-ok' : 'ziggycharts-compare-error');
 
     } catch (error) {
       console.error('ZiggyCharts: Comparison error:', error);
