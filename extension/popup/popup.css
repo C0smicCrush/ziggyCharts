@@ -148,6 +148,57 @@ h2 {
   font-weight: 500;
 }
 
+/* API key section */
+.api-key-section {
+  padding: 20px 24px;
+  border-bottom: 1px solid #e1e4e8;
+}
+
+.api-key-input-row {
+  display: flex;
+  gap: 8px;
+}
+
+.api-key-input {
+  flex: 1;
+  padding: 8px 12px;
+  border: 1px solid #d1d5da;
+  border-radius: 6px;
+  font-size: 13px;
+  font-family: inherit;
+  color: #24292e;
+  outline: none;
+  transition: border-color 0.2s;
+}
+
+.api-key-input:focus {
+  border-color: #667eea;
+  box-shadow: 0 0 0 2px rgba(102, 126, 234, 0.15);
+}
+
+.api-key-save {
+  padding: 8px 16px;
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  color: white;
+  border: none;
+  border-radius: 6px;
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: opacity 0.2s;
+}
+
+.api-key-save:hover {
+  opacity: 0.9;
+}
+
+.api-key-status {
+  font-size: 12px;
+  margin-top: 6px;
+  min-height: 16px;
+}
+
 .query-tags {
   display: flex;
   flex-wrap: wrap;

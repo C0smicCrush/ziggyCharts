@@ -5,12 +5,26 @@ class DataCommonsAPI {
     this.apiBase = 'https://api.datacommons.org';
     this.detectAndFulfillURL = 'https://datacommons.org/api/explore/detect-and-fulfill';
     this.observationEndpoint = `${this.apiBase}/v2/observation`;
-    this.apiKey = 'AIzaSyCTI4Xz-UW_G2Q2RfknhcfdAnTHq5X5XuI';
+    this.apiKey = null;
+    this._apiKeyReady = this._loadApiKey();
+  }
+
+  async _loadApiKey() {
+    try {
+      const result = await new Promise((resolve) => {
+        chrome.storage.local.get(['dataCommonsApiKey'], resolve);
+      });
+      if (result.dataCommonsApiKey) {
+        this.apiKey = result.dataCommonsApiKey;
+      }
+    } catch (e) {
+      console.warn('ZiggyCharts: Could not load API key from storage');
+    }
   }
 
   async getChartData(query) {
+    await this._apiKeyReady;
     try {
-      console.log('ZiggyCharts: Raw query →', query);
 
       // Pass the raw query to Data Commons detect-and-fulfill.
       // This is the same endpoint datacommons.org uses for its own explore page.
@@ -167,10 +181,10 @@ class DataCommonsAPI {
         type: 'FETCH_DATA_COMMONS',
         url: this.observationEndpoint,
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'X-API-Key': this.apiKey
-        },
+        headers: Object.assign(
+          { 'Content-Type': 'application/json' },
+          this.apiKey ? { 'X-API-Key': this.apiKey } : {}
+        ),
         body: JSON.stringify({
           date: '',
           variable: { dcids: [variableDCID] },

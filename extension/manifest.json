@@ -8,8 +8,8 @@
     "storage"
   ],
   "host_permissions": [
-    "*://*.google.com/*",
-    "*://datacommons.org/*",
+    "*://*.google.com/search*",
+    "*://datacommons.org/api/*",
     "*://api.datacommons.org/*"
   ],
   "content_scripts": [

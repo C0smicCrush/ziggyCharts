@@ -25,6 +25,39 @@ document.addEventListener('DOMContentLoaded', async () => {
   document.getElementById('showFallback').addEventListener('change', (e) => {
     saveSetting('showFallback', e.target.checked);
   });
+
+  // API key management
+  const apiKeyInput = document.getElementById('apiKey');
+  const saveApiKeyBtn = document.getElementById('saveApiKey');
+  const apiKeyStatus = document.getElementById('apiKeyStatus');
+
+  // Load existing API key (show masked placeholder if set)
+  chrome.storage.local.get(['dataCommonsApiKey'], (result) => {
+    if (result.dataCommonsApiKey) {
+      apiKeyInput.placeholder = 'Key saved (enter new to replace)';
+    }
+  });
+
+  saveApiKeyBtn.addEventListener('click', () => {
+    const key = apiKeyInput.value.trim();
+    if (!key) {
+      // Clear the key if empty
+      chrome.storage.local.remove(['dataCommonsApiKey'], () => {
+        apiKeyStatus.textContent = 'API key removed';
+        apiKeyStatus.style.color = '#70757a';
+        apiKeyInput.placeholder = 'Enter API key...';
+        apiKeyInput.value = '';
+      });
+      return;
+    }
+    chrome.storage.local.set({ dataCommonsApiKey: key }, () => {
+      apiKeyStatus.textContent = 'API key saved';
+      apiKeyStatus.style.color = '#34a853';
+      apiKeyInput.value = '';
+      apiKeyInput.placeholder = 'Key saved (enter new to replace)';
+      setTimeout(() => { apiKeyStatus.textContent = ''; }, 2000);
+    });
+  });
 });
 
 // Load settings from storage

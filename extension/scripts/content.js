@@ -133,11 +133,21 @@ class ZiggyCharts {
     this.chartCreated = true;
   }
 
+  // Sanitize a string for safe insertion into HTML
+  escapeHTML(str) {
+    const div = document.createElement('div');
+    div.appendChild(document.createTextNode(str));
+    return div.innerHTML;
+  }
+
   createChartContainer(query, chartData) {
     // Store the variable DCID for comparison compatibility checks
     this.currentVariableDCID = chartData._variableDCID || null;
     this.currentChartData = chartData;
     this.datasetCount = 1;
+
+    const safeTitle = this.escapeHTML(chartData.title || 'Data Visualization');
+    const isDemo = chartData.metric === 'demo';
 
     const container = document.createElement('div');
     container.className = 'ziggycharts-container';
@@ -148,7 +158,7 @@ class ZiggyCharts {
             <path d="M3 3v18h18" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
             <path d="M18 9l-5 5-4-4-3 3" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
           </svg>
-          <h2>${chartData.title || 'Data Visualization'}</h2>
+          <h2>${safeTitle}</h2>
         </div>
         <div class="ziggycharts-badge">Data Commons</div>
       </div>
@@ -166,10 +176,10 @@ class ZiggyCharts {
             <circle cx="12" cy="12" r="10" stroke="currentColor" stroke-width="2"/>
             <path d="M12 16v-4M12 8h.01" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
           </svg>
-          <span>${chartData.metric === 'demo' ? '⚠️ Demo mode - ' : ''}Data from <a href="https://datacommons.org" target="_blank">Data Commons</a> • 
+          <span>${isDemo ? '&#9888;&#65039; Demo mode - ' : ''}Data from <a href="https://datacommons.org" target="_blank">Data Commons</a> • 
           Replaced Google AI Overview with ZiggyCharts</span>
         </div>
-        <button class="ziggycharts-download" onclick="window.ziggyChartsDownload()">
+        <button class="ziggycharts-download">
           <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
             <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4M7 10l5 5 5-5M12 15V3" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
           </svg>
@@ -198,6 +208,10 @@ class ZiggyCharts {
         doCompare();
       }
     });
+
+    // Wire up download button (avoid inline onclick handler)
+    const downloadBtn = container.querySelector('.ziggycharts-download');
+    downloadBtn.addEventListener('click', () => this.downloadChartData());
 
     // Render chart
     setTimeout(() => {
@@ -391,11 +405,21 @@ class ZiggyCharts {
       }
     });
 
-    // Also store the chart reference globally for the download button
+    // Store chart reference for external access (e.g. debugging)
     window.ziggyChart = this.chartInstance;
-    window.ziggyChartsDownload = () => {
-      this.downloadChartData();
-    };
+  }
+
+  // Sanitize a CSV cell value to prevent formula injection in spreadsheet apps
+  sanitizeCSVCell(value) {
+    const str = String(value);
+    if (/^[=+\-@\t\r]/.test(str)) {
+      return "'" + str;
+    }
+    // Wrap in quotes if the value contains commas or quotes
+    if (str.includes(',') || str.includes('"') || str.includes('\n')) {
+      return '"' + str.replace(/"/g, '""') + '"';
+    }
+    return str;
   }
 
   downloadChartData() {
@@ -404,9 +428,9 @@ class ZiggyCharts {
     const labels = chart.data.labels;
     const datasets = chart.data.datasets;
 
-    let csv = 'Date,' + datasets.map(d => d.label).join(',') + '\n';
+    let csv = 'Date,' + datasets.map(d => this.sanitizeCSVCell(d.label)).join(',') + '\n';
     labels.forEach((label, i) => {
-      const row = [label, ...datasets.map(d => d.data[i] ?? '')];
+      const row = [this.sanitizeCSVCell(label), ...datasets.map(d => d.data[i] ?? '')];
       csv += row.join(',') + '\n';
     });
 

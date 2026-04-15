@@ -63,6 +63,18 @@
       </div>
     </div>
 
+    <div class="api-key-section">
+      <h2>API Key</h2>
+      <p class="setting-hint" style="margin-left: 0; margin-bottom: 8px;">
+        Provide your own <a href="https://datacommons.org/api" target="_blank">Data Commons API key</a> for the observation endpoint.
+      </p>
+      <div class="api-key-input-row">
+        <input type="password" id="apiKey" class="api-key-input" placeholder="Enter API key..." />
+        <button id="saveApiKey" class="api-key-save">Save</button>
+      </div>
+      <div id="apiKeyStatus" class="api-key-status"></div>
+    </div>
+
     <div class="supported-queries">
       <h2>Supported Query Types</h2>
       <div class="query-tags">
